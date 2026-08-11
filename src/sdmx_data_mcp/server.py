@@ -13,6 +13,7 @@ and then hand back a URL; this one returns observations.
 Run it over STDIO with ``sdmx-data-mcp``.
 """
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -523,27 +524,33 @@ def _records(df: "pd.DataFrame") -> List[Dict[str, Any]]:
     Returns:
         One dictionary per row.
     """
-    safe = df.astype(object).where(pd.notna(df), None)
     return [
         {str(k): _scalar(v) for k, v in row.items()}
-        for row in safe.to_dict(orient="records")
+        for row in df.astype(object).to_dict(orient="records")
     ]
 
 
 def _scalar(value: Any) -> Any:
     """Coerce a numpy or pandas scalar to a JSON-safe Python value.
 
+    Missing values are normalised to ``None`` here rather than through
+    ``DataFrame.where``, whose ``other=None`` overload is not accepted
+    by every pandas-stubs release and which therefore fails type
+    checking on some supported Python versions.
+
     Args:
         value: The value to coerce.
 
     Returns:
-        A Python primitive, or ``None``.
+        A Python primitive, or ``None`` for any missing value.
     """
-    if value is None:
+    if value is None or value is pd.NaT or value is pd.NA:
         return None
     item = getattr(value, "item", None)
     if callable(item):
-        return item()
+        value = item()
+    if isinstance(value, float) and math.isnan(value):
+        return None
     return value
 
 
